@@ -1,0 +1,7 @@
+prod_id,name,category,risk_class,price,short_desc
+101,GiroPlus,Giro,niedrig,89.9,Premium Girokonto mit kostenlosen Überweisungen und Kreditkarte inklusive
+102,DepotBasic,Depot,mittel,12.5,Günstige Wertpapierdepot für Einsteiger mit reduzierten Ordergebühren
+103,GoldCard,Kreditkarte,niedrig,150.0,Premium Kreditkarte mit Versicherungsschutz und weltweiten Vorteilen
+104,LebensSchutz,Versicherung,niedrig,280.0,Umfassende Lebensversicherung mit flexiblen Beitragszahlungen und Gewinnbeteiligung
+105,DepotProfessional,Depot,hoch,45.0,Professionelles Depot für aktive Trader mit erweiterten Analysefunktionen
+106,UnfallSchutz,Versicherung,niedrig,120.0,Umfassender Unfallschutz für Beruf und Freizeit mit schneller Auszahlung
