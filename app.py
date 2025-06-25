@@ -8,8 +8,14 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from agent_service import recommend, load_data
+from agent_llm import chat_llm
+import os
 import warnings
 warnings.filterwarnings('ignore')
+
+# OpenAI API Key aus Umgebungsvariable oder Session State
+if 'openai_api_key' not in st.session_state:
+    st.session_state.openai_api_key = os.getenv('OPENAI_API_KEY', '')
 
 # Seiten-Konfiguration
 st.set_page_config(
@@ -17,6 +23,10 @@ st.set_page_config(
     page_icon="🏦",
     layout="wide"
 )
+
+# Initialize chat history
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
 
 # Cache für Daten
 @st.cache_data
@@ -62,7 +72,7 @@ def main():
             st.markdown(f"**Credit Score:** {customer['credit_score']}")
     
     # Hauptbereich mit Tabs
-    tab1, tab2, tab3 = st.tabs(["🎯 Empfehlungen", "📊 Snapshot", "❓ Produkt erklären"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Empfehlungen", "📊 Snapshot", "❓ Produkt erklären", "💬 Chat mit AI"])
     
     # Tab 1: Empfehlungen
     with tab1:
@@ -259,6 +269,105 @@ def main():
                 st.markdown(category_info.get(prod['category'], "Bankprodukt mit speziellen Features."))
             else:
                 st.info("👆 Wählen Sie ein Produkt und klicken Sie auf 'Produkt erklären'.")
+    
+    # Tab 4: Chat mit AI
+    with tab4:
+        st.markdown("## 💬 Chat mit Bank-Berater AI")
+        st.markdown("Stellen Sie Fragen zu Bankprodukten, Empfehlungen und dem Kundenprofil.")
+        st.markdown("Der AI-Agent kann automatisch Tools nutzen: Empfehlungen, Snapshots, Produkterklärungen.")
+        
+        # API Key Settings in Sidebar
+        with st.sidebar:
+            st.markdown("### 🔑 API Einstellungen")
+            api_key_input = st.text_input(
+                "OpenAI API Key:",
+                value=st.session_state.openai_api_key,
+                type="password",
+                help="Geben Sie Ihren OpenAI API Key ein für erweiterte Chat-Funktionen. Lassen Sie das Feld leer für Mock-Modus."
+            )
+            if api_key_input != st.session_state.openai_api_key:
+                st.session_state.openai_api_key = api_key_input
+                if api_key_input:
+                    st.success("API Key aktualisiert!")
+                else:
+                    st.info("Mock-Modus aktiviert (kein API Key)")
+            
+            # Status Anzeige
+            if st.session_state.openai_api_key:
+                st.markdown("🟢 **Status:** OpenAI API")
+            else:
+                st.markdown("🔵 **Status:** Mock-Modus")
+        
+        # Chat Interface
+        chat_container = st.container()
+        
+        # Display chat history
+        with chat_container:
+            for message in st.session_state.chat_history:
+                if message['role'] == 'user':
+                    with st.chat_message('user'):
+                        st.write(message['content'])
+                else:
+                    with st.chat_message('assistant', avatar='🏦'):
+                        st.write(message['content'])
+        
+        # Chat input mit agent_llm
+        user_msg = st.chat_input("Frag den Agenten ...")
+        
+        if user_msg:
+            # Add user message to history
+            st.session_state.chat_history.append({'role': 'user', 'content': user_msg})
+            
+            # Get AI response using agent_llm
+            with st.spinner("AI denkt nach..."):
+                answer = chat_llm(
+                    user_msg=user_msg,
+                    api_key=st.session_state.openai_api_key,
+                    customer_id=customer_id,
+                    chat_history=st.session_state.chat_history
+                )
+            
+            # Add AI response to history
+            st.session_state.chat_history.append({'role': 'assistant', 'content': answer})
+            
+            # Show response with chat_message
+            with st.chat_message("assistant", avatar='🏦'):
+                st.write(answer)
+            
+            # Rerun to update chat display
+            st.rerun()
+        
+        # Clear chat button
+        col1, col2 = st.columns([6, 1])
+        with col2:
+            if st.button("🗑️ Chat löschen"):
+                st.session_state.chat_history = []
+                st.rerun()
+        
+        # Example prompts
+        st.markdown("### 💡 Beispiel-Fragen:")
+        example_prompts = [
+            f"Welche Produkte schlagen wir Kunde {customer_id} vor?",
+            f"Zeig mir bitte den Snapshot von Kunde {customer_id}.",
+            "Was kostet DepotPlus?",
+            "Liste alle verfügbaren Produkte auf.",
+            f"Warum sollte Kunde {customer_id} ein Depot eröffnen?"
+        ]
+        
+        cols = st.columns(2)
+        for i, prompt in enumerate(example_prompts):
+            with cols[i % 2]:
+                if st.button(prompt, key=f"example_{i}"):
+                    st.session_state.chat_history.append({'role': 'user', 'content': prompt})
+                    with st.spinner("AI denkt nach..."):
+                        answer = chat_llm(
+                            user_msg=prompt,
+                            api_key=st.session_state.openai_api_key,
+                            customer_id=customer_id,
+                            chat_history=st.session_state.chat_history
+                        )
+                    st.session_state.chat_history.append({'role': 'assistant', 'content': answer})
+                    st.rerun()
     
     # Footer
     st.markdown("---")

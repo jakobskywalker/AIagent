@@ -67,6 +67,13 @@ MVP/
 - Kategorie-Informationen
 - Gebührenübersicht
 
+### 4. **💬 Chat mit AI** (NEU!)
+- Interaktiver Chat mit Bank-Berater AI
+- ChatGPT-Integration für natürliche Gespräche
+- Kontextbezogene Antworten basierend auf Kundenprofil
+- Produktberatung und Empfehlungen im Dialog
+- Fallback-Modus ohne API Key
+
 ## 🛠️ Tech Stack
 
 - **Frontend**: Streamlit
@@ -129,15 +136,26 @@ CMD ["streamlit", "run", "app.py"]
 2. **Empfehlungen**: Tab 1 → "Empfehlung anfordern"
 3. **Snapshot**: Tab 2 → "Snapshot anzeigen"
 4. **Produkte**: Tab 3 → Produkt auswählen → "Erklären"
+5. **Chat**: Tab 4 → Fragen stellen und Beratung erhalten
 
 ## 🔧 Konfiguration
 
 ### OpenAI Integration (optional)
+
+**Option 1: Umgebungsvariable**
 ```bash
 export OPENAI_API_KEY="sk-..."
 ```
 
-Ohne API-Key nutzt das System regelbasierte Erklärungen.
+**Option 2: In der App**
+- Gehen Sie zur Sidebar → API Einstellungen
+- Geben Sie Ihren OpenAI API Key ein
+- Der Key wird nur für die aktuelle Session gespeichert
+
+**Ohne API Key:**
+- Das System nutzt regelbasierte Erklärungen
+- Der Chat funktioniert mit eingeschränkten Antworten
+- Produktempfehlungen sind weiterhin vollständig verfügbar
 
 ## 📈 Erweiterungsmöglichkeiten
 

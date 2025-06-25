@@ -15,6 +15,8 @@ faker>=19.0.0
 
 # AI Integration (optional)
 openai>=1.0.0
+langchain>=0.3.0
+langchain-openai>=0.3.0
 
 # Jupyter Support (optional)
 jupyter>=1.0.0

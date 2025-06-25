@@ -83,7 +83,8 @@ Score {score:.2f}.
 Erkläre in 1 Satz, warum {product_data['name']} passt."""
         
         try:
-            response = openai.ChatCompletion.create(
+            client = openai.OpenAI(api_key=openai.api_key)
+            response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "Du bist ein hilfreicher Bank-Berater. Antworte kurz und präzise auf Deutsch."},
@@ -92,7 +93,7 @@ Erkläre in 1 Satz, warum {product_data['name']} passt."""
                 max_tokens=100,
                 temperature=0.7
             )
-            return response.choices[0].message['content'].strip()
+            return response.choices[0].message.content.strip()
         except Exception as e:
             print(f"⚠️ OpenAI API Fehler: {e}")
             # Fallback zu regelbasierter Erklärung
