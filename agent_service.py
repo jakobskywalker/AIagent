@@ -145,7 +145,6 @@ def recommend(cust_id: int, top_k: int = 3) -> List[Dict]:
     # Für jedes Produkt
     for _, product in products_df.iterrows():
         prod_id = product['prod_id']
-        contributions = None  # initialise
         
         # Überspringe bereits besessene Produkte
         if prod_id in owned_products:
@@ -160,6 +159,7 @@ def recommend(cust_id: int, top_k: int = 3) -> List[Dict]:
             score = model.predict_proba(features)[0][1]
 
             # XAI nur bei LinearModellen (LogisticRegression)
+            contributions = None
             try:
                 coeffs = model.coef_[0]
                 feature_columns = feature_cols_pid
