@@ -42,9 +42,12 @@ def train_models(df_enc: pd.DataFrame, feature_cols: list[int]):
     """Trainiert je Produkt ein LR-Modell und liefert Dicts mit Modellen & AUC-Scores."""
     models = {}
     metrics = {}
+    feature_map = {}
     for pid in [101, 102, 103, 104, 105, 106]:
         y = df_enc[f'has_{pid}']
-        X = df_enc[feature_cols]
+        feature_cols_pid = [c for c in feature_cols if c != f'has_{pid}']
+        X = df_enc[feature_cols_pid]
+        feature_map[pid] = feature_cols_pid
 
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, stratify=y, random_state=42
@@ -57,7 +60,7 @@ def train_models(df_enc: pd.DataFrame, feature_cols: list[int]):
         models[pid] = clf
         metrics[pid] = float(auc)
         print(f"Produkt {pid}: ROC-AUC {auc:.3f}")
-    return models, metrics
+    return models, metrics, feature_map
 
 
 def main():
@@ -74,13 +77,13 @@ def main():
         'has_101', 'has_102', 'has_103', 'has_104', 'has_105', 'has_106'
     ]
 
-    models, metrics = train_models(df_enc, feature_cols)
+    models, metrics, feature_map = train_models(df_enc, feature_cols)
 
     model_package = {
         'models': models,
         'scaler': scaler,
         'label_encoder_age': le_age,
-        'feature_columns': feature_cols,
+        'feature_columns_map': feature_map,
         'metrics': metrics
     }
 

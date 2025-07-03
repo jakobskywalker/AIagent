@@ -36,8 +36,8 @@ def load_data():
     
     return _model_package, _customers_df, _products_df, _ownership_df
 
-def prepare_customer_features(cust_id: int, model_package: dict, customers_df: pd.DataFrame, ownership_df: pd.DataFrame) -> np.ndarray:
-    """Bereite Features für einen spezifischen Kunden vor"""
+def build_feature_vector(cust_id: int, feature_columns: list[str], customers_df: pd.DataFrame, ownership_df: pd.DataFrame, scaler, le_age) -> np.ndarray:
+    """Erstellt Feature-Vektor für gewünschte Spaltenliste"""
     
     # Hole Kundendaten
     customer = customers_df[customers_df['cust_id'] == cust_id]
@@ -46,9 +46,7 @@ def prepare_customer_features(cust_id: int, model_package: dict, customers_df: p
     
     customer = customer.iloc[0]
     
-    # Hole Scaler und Label Encoder aus dem Model Package
-    scaler = model_package['scaler']
-    le_age = model_package['label_encoder_age']
+    # scaler und le_age werden übergeben
     
     # Erstelle Feature Dictionary
     features = {}
@@ -63,14 +61,16 @@ def prepare_customer_features(cust_id: int, model_package: dict, customers_df: p
     # Produkt-Ownership Features
     customer_products = set(ownership_df[ownership_df['cust_id'] == cust_id]['prod_id'])
     
-    for prod_id in [101, 103, 104, 105, 106]:  # Alle außer 102
+    for prod_id in [101, 102, 103, 104, 105, 106]:
         features[f'has_{prod_id}'] = 1 if prod_id in customer_products else 0
-    
-    # Features in der richtigen Reihenfolge
-    feature_columns = model_package['feature_columns']
     feature_vector = [features[col] for col in feature_columns]
     
     return np.array(feature_vector).reshape(1, -1)
+
+# Backwards compatibility for older single-model usage
+def prepare_customer_features(cust_id: int, model_package: dict, customers_df: pd.DataFrame, ownership_df: pd.DataFrame):
+    feature_columns = model_package.get('feature_columns') or list(model_package['feature_columns_map'].values())[0]
+    return build_feature_vector(cust_id, feature_columns, customers_df, ownership_df, model_package['scaler'], model_package['label_encoder_age'])
 
 def generate_explanation(customer_data: dict, product_data: dict, score: float, use_openai: bool = True) -> str:
     """Generiere Erklärung für eine Produktempfehlung"""
@@ -154,14 +154,15 @@ def recommend(cust_id: int, top_k: int = 3) -> List[Dict]:
         if prod_id in model_package.get('models', {}):
             # ML-basiertes Scoring mit vorhandenem Modell
             model = model_package['models'][prod_id]
-            features = prepare_customer_features(cust_id, model_package, customers_df, ownership_df)
+            feature_cols_pid = model_package['feature_columns_map'][prod_id]
+            features = build_feature_vector(cust_id, feature_cols_pid, customers_df, ownership_df, model_package['scaler'], model_package['label_encoder_age'])
             score = model.predict_proba(features)[0][1]
 
             # XAI nur bei LinearModellen (LogisticRegression)
             contributions = None
             try:
                 coeffs = model.coef_[0]
-                feature_columns = model_package['feature_columns']
+                feature_columns = feature_cols_pid
                 contrib_raw = coeffs * features.flatten()
                 contributions = [
                     {

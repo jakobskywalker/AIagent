@@ -8,6 +8,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import time
+import altair as alt
 from agent_service import recommend, load_data, top_potential_analysis
 from agent_llm import chat_llm
 import chatlog_service
@@ -144,13 +145,37 @@ def main():
                             # XAI Expander
                             if rec.get('contributions'):
                                 with st.expander("🧠 XAI Details", expanded=False):
-                                    top_contribs = rec['contributions'][:5]
-                                    df_contrib = pd.DataFrame(top_contribs)
-                                    df_contrib_display = df_contrib[['feature', 'contribution']].copy()
-                                    df_contrib_display['Contribution'] = df_contrib_display['contribution'].round(3)
-                                    df_contrib_display = df_contrib_display[['feature', 'Contribution']]
-                                    st.bar_chart(df_contrib_display.set_index('feature'))
-                                    st.caption("Positiv = erhöht Abschlusswahrscheinlichkeit, negativ = verringert")
+                                    alias = {
+                                        'age_bucket_encoded': 'Altersgruppe',
+                                        'revenue': 'Einkommen (norm.)',
+                                        'credit_score': 'Kredit-Score (norm.)',
+                                        'has_101': 'Besitzt GiroPlus',
+                                        'has_102': 'Besitzt DepotBasic',
+                                        'has_103': 'Besitzt GoldCard',
+                                        'has_104': 'Besitzt LebensSchutz',
+                                        'has_105': 'Besitzt DepotProfessional',
+                                        'has_106': 'Besitzt UnfallSchutz'
+                                    }
+                                    dfc = pd.DataFrame(rec['contributions'])
+                                    dfc['display'] = dfc['feature'].map(alias).fillna(dfc['feature'])
+                                    total_abs = dfc['contribution'].abs().sum()
+                                    dfc['percent'] = (dfc['contribution'].abs()/total_abs*100).round(1)
+                                    # Summary
+                                    top_row = dfc.iloc[0]
+                                    direction = "erhöht" if top_row['contribution']>0 else "senkt"
+                                    st.markdown(f"**Haupttreiber:** *{top_row['display']}* – {direction} die Abschlusswahrscheinlichkeit um ca. {top_row['percent']} %.")
+
+                                    # Bar chart mit Farben
+                                    plot_df = dfc.head(5)[['display','contribution']]
+                                    chart = alt.Chart(plot_df).mark_bar().encode(
+                                        y=alt.Y('display:N', title='Feature', sort='-x'),
+                                        x=alt.X('contribution:Q', title='Beitrag'),
+                                        color=alt.condition(alt.datum.contribution > 0,
+                                                           alt.value('#2ecc71'),  # grün
+                                                           alt.value('#e74c3c'))   # rot
+                                    )
+                                    st.altair_chart(chart, use_container_width=True)
+                                    st.caption("Grün = positiver Einfluss, Rot = negativer Einfluss (Werte normiert auf Top-5-Beiträge)")
                         
                         with col_score:
                             # Score als Prozentbalken
