@@ -197,6 +197,45 @@ def list_all_products() -> str:
     except Exception as e:
         return f"Fehler beim Auflisten der Produkte: {str(e)}"
 
+@tool
+def top_potential_customer(top_k: int = 3) -> str:
+    """
+    Liefert den Kunden mit dem höchsten erwarteten Gewinn basierend auf Produktempfehlungen.
+
+    Args:
+        top_k: Anzahl der Empfehlungen pro Kunde, die in die Berechnung einfließen.
+
+    Returns:
+        Formatierten Text mit Top-Potential-Kunde, erwarteten Gewinn und empfohlene Produkte.
+    """
+    try:
+        from agent_service import top_potential_analysis, load_data
+
+        all_results = top_potential_analysis(top_k_per_customer=top_k)
+        if not all_results:
+            return "Keine Daten verfügbar, um eine Top-Potential-Analyse durchzuführen."
+
+        best = all_results[0]
+        cust_id = best['cust_id']
+        exp_profit = best['expected_profit']
+
+        # Kundendaten holen für Namen
+        customers_df, _, _, _ = get_data()
+        customer = customers_df[customers_df['cust_id'] == cust_id]
+        if not customer.empty:
+            customer_name = f"{customer.iloc[0]['first_name']} {customer.iloc[0]['last_name']}"
+        else:
+            customer_name = f"Kunde {cust_id}"
+
+        result = f"💎 **Top-Potential-Kunde:** {customer_name} (ID: {cust_id})\n"
+        result += f"💶 **Erwarteter Gewinn:** €{exp_profit:,.2f}\n\n"
+        result += "📦 **Empfohlene Produkte:**\n"
+        for rec in best['recommendations']:
+            result += f"- {rec['name']} (ID {rec['prod_id']}) – Score {rec['score']:.2%} – Erwarteter Gewinn €{rec['expected_profit']:.2f}\n"
+        return result
+    except Exception as e:
+        return f"Fehler bei Top-Potential-Analyse: {str(e)}"
+
 def mock_chat_response(user_msg: str, customer_id: int = None) -> str:
     """
     Mock-Antworten ohne OpenAI API - parsed die Nachricht und ruft die passende Funktion auf
@@ -241,6 +280,10 @@ def mock_chat_response(user_msg: str, customer_id: int = None) -> str:
     elif any(word in msg_lower for word in ['alle produkte', 'liste', 'verfügbar', 'welche produkte gibt']):
         return list_all_products.invoke({})
     
+    # Top Potential
+    elif any(word in msg_lower for word in ['top potential', 'top-potential', 'top-kunde', 'top-gewinn']):
+        return top_potential_customer.invoke({"top_k": 3})
+    
     # Default Antwort
     else:
         return f"""Ich bin Ihr Bank-Berater AI Assistant. Ich kann Ihnen bei folgenden Aufgaben helfen:
@@ -249,6 +292,7 @@ def mock_chat_response(user_msg: str, customer_id: int = None) -> str:
 📊 **Kunden-Snapshot**: "Zeigen Sie mir den Snapshot von Kunde 23"
 📦 **Produkt-Details**: "Was kostet DepotPlus?" oder "Erklären Sie mir die GoldCard"
 📋 **Produkt-Übersicht**: "Listen Sie alle verfügbaren Produkte auf"
+💎 **Top-Potential-Kunde**: "Zeige mir den Kunden mit dem höchsten erwarteten Gewinn"
 
 Aktueller Kunde: {customer_id if customer_id else 'Nicht ausgewählt'}
 
@@ -274,7 +318,7 @@ def create_agent(api_key: str, customer_id: int = None):
     )
     
     # Tools
-    tools = [recommend_products, get_customer_snapshot, explain_product, list_all_products]
+    tools = [recommend_products, get_customer_snapshot, explain_product, list_all_products, top_potential_customer]
     
     # System Prompt
     system_message = """Du bist ein hilfreicher Bank-Berater AI Assistant für die Bank-Adviser AI.
@@ -284,6 +328,7 @@ Du hast Zugriff auf folgende Tools:
 - get_customer_snapshot: Zeigt detaillierte Kundeninformationen
 - explain_product: Erklärt ein spezifisches Bankprodukt
 - list_all_products: Listet alle verfügbaren Produkte auf
+- top_potential_customer: Liefert den Kunden mit dem höchsten erwarteten Gewinn basierend auf Produktempfehlungen
 
 Nutze diese Tools, um präzise und hilfreiche Antworten zu geben.
 Antworte immer auf Deutsch und sei freundlich und professionell.
@@ -392,7 +437,8 @@ if __name__ == "__main__":
         "Welche Produkte würdest du Kunde 17 empfehlen?",
         "Zeig mir bitte den Snapshot von Kunde 23.",
         "Was kostet DepotPlus?",
-        "Liste alle verfügbaren Produkte auf."
+        "Liste alle verfügbaren Produkte auf.",
+        "Zeige mir den Kunden mit dem höchsten erwarteten Gewinn."
     ]
     
     # Test Mock-Modus

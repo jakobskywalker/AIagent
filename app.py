@@ -7,9 +7,12 @@ Chat-basierter AI-Assistent für Bankberater
 import streamlit as st
 import pandas as pd
 import numpy as np
-from agent_service import recommend, load_data
+import time
+from agent_service import recommend, load_data, top_potential_analysis
 from agent_llm import chat_llm
+import chatlog_service
 import os
+from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -27,6 +30,14 @@ st.set_page_config(
 # Initialize chat history
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
+
+# Initialize current customer ID
+if 'current_customer_id' not in st.session_state:
+    st.session_state.current_customer_id = None
+
+# Initialize auto-save preference
+if 'auto_save_chats' not in st.session_state:
+    st.session_state.auto_save_chats = True
 
 # Cache für Daten
 @st.cache_data
@@ -61,6 +72,32 @@ def main():
             help="Geben Sie eine Kundennummer zwischen 1 und 50 ein"
         )
         
+        # Auto-Save Option
+        st.markdown("### 💾 Chat-Einstellungen")
+        st.session_state.auto_save_chats = st.checkbox(
+            "Chats automatisch speichern",
+            value=st.session_state.auto_save_chats,
+            help="Speichert Chats automatisch, wenn Sie den Kunden wechseln"
+        )
+        
+        # Wenn Kunde gewechselt wurde und Auto-Save aktiv ist
+        if st.session_state.current_customer_id and st.session_state.current_customer_id != customer_id:
+            if st.session_state.auto_save_chats and st.session_state.chat_history:
+                # Speichere den Chat des vorherigen Kunden
+                chatlog_service.save_chatlog(
+                    customer_id=st.session_state.current_customer_id,
+                    chat_history=st.session_state.chat_history,
+                    metadata={
+                        'saved_at': datetime.now().isoformat(),
+                        'api_mode': 'OpenAI' if st.session_state.openai_api_key else 'Mock',
+                        'auto_saved': True
+                    }
+                )
+                st.session_state.chat_history = []
+        
+        # Aktualisiere aktuelle Kunden-ID
+        st.session_state.current_customer_id = customer_id
+        
         # Kundeninfo anzeigen
         if customer_id:
             customer = customers_df[customers_df['cust_id'] == customer_id].iloc[0]
@@ -72,7 +109,7 @@ def main():
             st.markdown(f"**Credit Score:** {customer['credit_score']}")
     
     # Hauptbereich mit Tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Empfehlungen", "📊 Snapshot", "❓ Produkt erklären", "💬 Chat mit AI"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🎯 Empfehlungen", "📊 Snapshot", "❓ Produkt erklären", "💬 Chat mit AI", "📜 Chat-Historie", "💎 Top Potential"])
     
     # Tab 1: Empfehlungen
     with tab1:
@@ -297,6 +334,13 @@ def main():
                 st.markdown("🟢 **Status:** OpenAI API")
             else:
                 st.markdown("🔵 **Status:** Mock-Modus")
+            
+            # Zeige Kunden mit Chatlogs
+            st.markdown("### 📚 Kunden mit Chatlogs")
+            customers_with_logs = chatlog_service.get_all_customers_with_chatlogs()
+            if customers_with_logs:
+                st.info(f"{len(customers_with_logs)} Kunden haben gespeicherte Chats")
+                st.caption("Kunden-IDs: " + ", ".join(map(str, customers_with_logs[:10])) + ("..." if len(customers_with_logs) > 10 else ""))
         
         # Chat Interface
         chat_container = st.container()
@@ -337,9 +381,24 @@ def main():
             # Rerun to update chat display
             st.rerun()
         
-        # Clear chat button
-        col1, col2 = st.columns([6, 1])
+        # Clear chat button and save button
+        col1, col2, col3 = st.columns([4, 1, 1])
         with col2:
+            if st.button("💾 Speichern") and st.session_state.chat_history:
+                # Speichere aktuellen Chat
+                chatlog_service.save_chatlog(
+                    customer_id=customer_id,
+                    chat_history=st.session_state.chat_history,
+                    metadata={
+                        'saved_at': datetime.now().isoformat(),
+                        'api_mode': 'OpenAI' if st.session_state.openai_api_key else 'Mock'
+                    }
+                )
+                st.success("Chat gespeichert!")
+                st.session_state.chat_history = []
+                st.rerun()
+        
+        with col3:
             if st.button("🗑️ Chat löschen"):
                 st.session_state.chat_history = []
                 st.rerun()
@@ -369,7 +428,130 @@ def main():
                     st.session_state.chat_history.append({'role': 'assistant', 'content': answer})
                     st.rerun()
     
-    # Footer
+    # Tab 5: Chat-Historie
+    with tab5:
+        st.markdown("## 📜 Chat-Historie")
+        st.markdown(f"Gespeicherte Chat-Verläufe für {customer['first_name']} {customer['last_name']} (Kunde {customer_id})")
+        
+        # Lade alle Chatlogs für den Kunden
+        chatlogs = chatlog_service.load_all_chatlogs(customer_id)
+        
+        if chatlogs:
+            # Statistiken anzeigen
+            stats = chatlog_service.get_chatlog_statistics(customer_id)
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Gespeicherte Chats", stats['total_sessions'])
+            with col2:
+                st.metric("Gesamte Nachrichten", stats['total_messages'])
+            with col3:
+                st.metric("Ø Nachrichten pro Chat", f"{stats['avg_messages_per_session']:.1f}")
+            
+            # Suchfunktion
+            st.markdown("### 🔍 Chatlogs durchsuchen")
+            search_term = st.text_input("Suchbegriff eingeben:", placeholder="z.B. DepotBasic, Empfehlung, Kosten...")
+            
+            # Filter Chatlogs basierend auf Suche
+            if search_term:
+                filtered_logs = chatlog_service.search_chatlogs(customer_id, search_term)
+                st.info(f"Gefunden in {len(filtered_logs)} von {len(chatlogs)} Chats")
+            else:
+                filtered_logs = chatlogs
+            
+            # Zeige Chatlogs
+            st.markdown("### 💬 Gespeicherte Chats")
+            
+            # Sortiere nach Datum (neueste zuerst)
+            filtered_logs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+            
+            for log in filtered_logs:
+                with st.expander(f"Chat vom {log['timestamp'][:19].replace('T', ' ')} - {log['message_count']} Nachrichten"):
+                    # Zeige Metadaten
+                    metadata_cols = st.columns(3)
+                    with metadata_cols[0]:
+                        st.caption(f"📅 Session: {log.get('session_id', 'Unbekannt')}")
+                    with metadata_cols[1]:
+                        st.caption(f"🤖 Modus: {log.get('metadata', {}).get('api_mode', 'Unbekannt')}")
+                    with metadata_cols[2]:
+                        auto_saved = log.get('metadata', {}).get('auto_saved', False)
+                        st.caption(f"💾 {'Auto-gespeichert' if auto_saved else 'Manuell gespeichert'}")
+                    
+                    # Zeige Nachrichten
+                    for msg in log['messages']:
+                        if msg['role'] == 'user':
+                            st.markdown(f"**👤 Kunde:** {msg['content']}")
+                        else:
+                            st.markdown(f"**🏦 AI-Agent:** {msg['content']}")
+                    
+                    # Aktionen für diesen Chatlog
+                    col_a, col_b = st.columns([5, 1])
+                    with col_b:
+                        if st.button("🗑️", key=f"del_{log['session_id']}", help="Diesen Chat löschen"):
+                            if chatlog_service.delete_chatlog(customer_id, log['session_id']):
+                                st.success("Chat gelöscht!")
+                                st.rerun()
+            
+            # Export-Funktionen
+            st.markdown("### 📤 Export-Optionen")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("📊 Als CSV exportieren"):
+                    export_path = f"data/chatlogs/export_customer_{customer_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                    chatlog_service.export_chatlogs_to_csv(customer_id, export_path)
+                    st.success(f"Exportiert nach: {export_path}")
+            
+            with col2:
+                if st.button("🗑️ Alle Chats löschen", type="secondary"):
+                    if chatlog_service.delete_all_chatlogs(customer_id):
+                        st.success("Alle Chats gelöscht!")
+                        st.rerun()
+        
+        else:
+            st.info("📭 Noch keine gespeicherten Chats für diesen Kunden vorhanden.")
+            st.markdown("💡 **Tipp:** Führen Sie einen Chat im 'Chat mit AI' Tab und klicken Sie auf 'Speichern' um den Verlauf zu sichern.")
+    
+    # Tab 6: Top Potential Analyse
+    with tab6:
+        st.markdown("## 💎 Top Potential Analyse")
+        st.markdown("Ermittelt den Kunden mit dem höchsten erwarteten Gewinn basierend auf Produktempfehlungen für alle Kunden.")
+
+        if st.button("🔎 Analyse starten", type="primary", use_container_width=True):
+            # Fortschrittsanzeige / Animation
+            progress_bar = st.progress(0)
+            status_placeholder = st.empty()
+
+            for pct in range(0, 101, 10):
+                progress_bar.progress(pct)
+                status_placeholder.text(f"Analysiere Daten... {pct}%")
+                time.sleep(0.05)
+
+            with st.spinner("Berechne Top-Potential-Analyse..."):
+                results = top_potential_analysis(top_k_per_customer=3)
+
+            if results:
+                best = results[0]
+                best_customer = customers_df[customers_df['cust_id'] == best['cust_id']].iloc[0]
+
+                st.success(f"💎 Top-Kunde: {best_customer['first_name']} {best_customer['last_name']} (ID {best['cust_id']})")
+                st.metric("Erwarteter Gewinn", f"€{best['expected_profit']:.2f}")
+
+                # Details der Empfehlungen
+                st.markdown("### 📦 Empfohlene Produkte & erwarteter Gewinn")
+                df_recs = pd.DataFrame(best['recommendations'])
+                if not df_recs.empty:
+                    df_recs['Score (%)'] = (df_recs['score'] * 100).round(1)
+                    df_recs['Gewinn (€)'] = df_recs['expected_profit'].round(2)
+                    df_recs = df_recs[['name', 'Score (%)', 'price', 'Gewinn (€)']]
+                    df_recs.columns = ['Produkt', 'Score (%)', 'Preis (€)', 'Gewinn (€)']
+                    st.dataframe(df_recs, use_container_width=True)
+                else:
+                    st.info("Keine Empfehlungen für diesen Kunden verfügbar.")
+            else:
+                st.warning("Keine Daten für die Analyse gefunden.")
+
+    # --- Footer ---
     st.markdown("---")
     st.markdown("🏦 **Bank-Adviser AI** | Powered by Machine Learning & AI | Alle Daten bleiben lokal")
 

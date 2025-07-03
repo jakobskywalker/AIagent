@@ -202,6 +202,52 @@ def recommend(cust_id: int, top_k: int = 3) -> List[Dict]:
     
     return recommendations[:top_k]
 
+def top_potential_analysis(top_k_per_customer: int = 3):
+    """Berechnet für alle Kunden den erwarteten Gewinn basierend auf Produktempfehlungen
+
+    Args:
+        top_k_per_customer: Wie viele Empfehlungen pro Kunde berücksichtigt werden sollen
+
+    Returns:
+        Dict mit Top-Kunden und deren erwartetem Gewinn sowie Detailinformationen
+    """
+    # Lade Daten (ggf. aus Cache)
+    model_package, customers_df, products_df, ownership_df = load_data()
+
+    results = []
+
+    for cust_id in customers_df['cust_id']:
+        # Empfehlungen für diesen Kunden holen
+        recs = recommend(cust_id, top_k=top_k_per_customer)
+        expected_profit = 0.0
+        detailed_recs = []
+
+        for rec in recs:
+            # Preis des Produkts ermitteln
+            price_row = products_df[products_df['prod_id'] == rec['prod_id']]
+            if price_row.empty:
+                continue
+            price = float(price_row.iloc[0]['price'])
+            exp_profit = price * rec['score']
+            expected_profit += exp_profit
+
+            detailed_recs.append({
+                **rec,
+                'price': price,
+                'expected_profit': exp_profit
+            })
+
+        results.append({
+            'cust_id': int(cust_id),
+            'expected_profit': expected_profit,
+            'recommendations': detailed_recs
+        })
+
+    # Sortiere nach erwartetem Gewinn absteigend
+    results.sort(key=lambda x: x['expected_profit'], reverse=True)
+
+    return results
+
 def main():
     """Beispiel-Verwendung des Recommendation Service"""
     print("🏦 Bank-Adviser AI - Recommendation Service")
