@@ -21,3 +21,4 @@ langchain-openai>=0.3.0
 # Jupyter Support (optional)
 jupyter>=1.0.0
 notebook>=7.0.0 
+altair>=5.0.0 
