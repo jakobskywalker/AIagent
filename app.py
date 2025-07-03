@@ -140,6 +140,17 @@ def main():
                         with col_name:
                             st.markdown(f"**{i}. {rec['name']}** (Produkt {rec['prod_id']})")
                             st.markdown(f"_{rec['reason']}_")
+
+                            # XAI Expander
+                            if rec.get('contributions'):
+                                with st.expander("🧠 XAI Details", expanded=False):
+                                    top_contribs = rec['contributions'][:5]
+                                    df_contrib = pd.DataFrame(top_contribs)
+                                    df_contrib_display = df_contrib[['feature', 'contribution']].copy()
+                                    df_contrib_display['Contribution'] = df_contrib_display['contribution'].round(3)
+                                    df_contrib_display = df_contrib_display[['feature', 'Contribution']]
+                                    st.bar_chart(df_contrib_display.set_index('feature'))
+                                    st.caption("Positiv = erhöht Abschlusswahrscheinlichkeit, negativ = verringert")
                         
                         with col_score:
                             # Score als Prozentbalken

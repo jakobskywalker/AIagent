@@ -151,36 +151,43 @@ def recommend(cust_id: int, top_k: int = 3) -> List[Dict]:
             continue
         
         # Berechne Score für dieses Produkt
-        if prod_id == 102:
-            # Für Produkt 102 nutze direkt das trainierte Modell
+        if prod_id in model_package.get('models', {}):
+            # ML-basiertes Scoring mit vorhandenem Modell
+            model = model_package['models'][prod_id]
             features = prepare_customer_features(cust_id, model_package, customers_df, ownership_df)
-            score = model_package['model'].predict_proba(features)[0][1]
+            score = model.predict_proba(features)[0][1]
+
+            # XAI nur bei LinearModellen (LogisticRegression)
+            contributions = None
+            try:
+                coeffs = model.coef_[0]
+                feature_columns = model_package['feature_columns']
+                contrib_raw = coeffs * features.flatten()
+                contributions = [
+                    {
+                        'feature': feature_columns[i],
+                        'value': float(features.flatten()[i]),
+                        'coefficient': float(coeffs[i]),
+                        'contribution': float(contrib_raw[i])
+                    }
+                    for i in range(len(feature_columns))
+                ]
+                contributions.sort(key=lambda x: abs(x['contribution']), reverse=True)
+            except Exception:
+                contributions = None
         else:
-            # Für andere Produkte: Simuliere Scores basierend auf Kundenattributen
-            # Dies ist eine vereinfachte Heuristik
+            # Fallback: Heuristik (nur wenn kein Modell vorhanden)
             base_score = 0.5
-            
-            # Anpassung basierend auf Einkommen
-            if customer_data['revenue'] > 150000:
-                if product['name'] in ['DepotProfessional', 'GoldCard']:
-                    base_score += 0.2
-            elif customer_data['revenue'] < 50000:
-                if product['name'] in ['DepotBasic', 'UnfallSchutz']:
-                    base_score += 0.15
-            
-            # Anpassung basierend auf Alter
-            if customer_data['age_bucket'] == '60+':
-                if product['name'] in ['LebensSchutz', 'UnfallSchutz']:
-                    base_score += 0.15
-            elif customer_data['age_bucket'] in ['18-24', '25-39']:
-                if product['name'] in ['DepotBasic', 'GiroPlus']:
-                    base_score += 0.1
-            
-            # Credit Score Einfluss
-            if customer_data['credit_score'] > 700:
+            # Einkommens-Einfluss (Beispiele)
+            if customer_data['revenue'] > 150000 and product['category'] in ['Depot', 'Kreditkarte']:
+                base_score += 0.2
+            if customer_data['revenue'] < 50000 and product['category'] in ['Versicherung']:
                 base_score += 0.1
-            
-            score = min(base_score, 0.95)  # Cap bei 0.95
+
+            # Alterseinfluss
+            if customer_data['age_bucket'] == '60+' and product['category'] == 'Versicherung':
+                base_score += 0.1
+            score = min(base_score, 0.95)
         
         # Generiere Erklärung
         reason = generate_explanation(
@@ -190,12 +197,17 @@ def recommend(cust_id: int, top_k: int = 3) -> List[Dict]:
             use_openai=bool(openai.api_key)
         )
         
-        recommendations.append({
+        rec_entry = {
             'prod_id': int(prod_id),
             'name': product['name'],
             'score': float(score),
             'reason': reason
-        })
+        }
+
+        if contributions:
+            rec_entry['contributions'] = contributions
+
+        recommendations.append(rec_entry)
     
     # Sortiere nach Score (absteigend) und nehme Top-k
     recommendations.sort(key=lambda x: x['score'], reverse=True)
