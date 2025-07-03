@@ -1,0 +1,22 @@
+[
+  {
+    "session_id": "20250703_202049",
+    "timestamp": "2025-07-03T20:20:49.848082",
+    "customer_id": 3,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Welche Produkte kann ich Kunde 3 vorschlagen"
+      },
+      {
+        "role": "assistant",
+        "content": "🤖 **Mock-Modus** (Kein API Key)\n\n🎯 Top 3 Produktempfehlungen für Kunde 3:\n\n1. **GoldCard** (Produkt 103)\n   Score: 80.00%\n   Begründung: Die GoldCard bietet Ihnen mit hohem Einkommen weltweite Vorteile und Versicherungsschutz.\n\n2. **DepotProfessional** (Produkt 105)\n   Score: 80.00%\n   Begründung: Mit hohem Einkommen können Sie vom DepotProfessional mit erweiterten Trading-Funktionen profitieren.\n\n3. **GiroPlus** (Produkt 101)\n   Score: 70.00%\n   Begründung: Mit hohem Einkommen und Alter 18-24 profitieren Sie von den Premium-Features des GiroPlus.\n\n"
+      }
+    ],
+    "message_count": 2,
+    "metadata": {
+      "saved_at": "2025-07-03T20:20:49.847639",
+      "api_mode": "Mock"
+    }
+  }
+]
