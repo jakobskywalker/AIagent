@@ -297,13 +297,10 @@ def main():
                                 col_a, col_b = st.columns(2)
                                 with col_a:
                                     st.metric("Kreditvolumen", f"€{prod['deal_volume']:,.0f}")
-                                    # Hole Zinssatz (Ownership priorisiert)
-                                    indiv_rate = prod.get('interest_rate') if 'interest_rate' in prod else prod.get('interest_rate_x') or prod.get('interest_rate_y')
-                                    if pd.notna(indiv_rate):
-                                        st.metric("Individueller Zinssatz", f"{indiv_rate}% p.a.")
+                                    st.metric("Individueller Zinssatz", f"{prod['interest_rate_x']}% p.a.")
                                 with col_b:
                                     st.metric("Kredittyp", prod['credit_type'])
-                                    st.metric("Risikoklasse", prod['risk_class'])
+                                    st.metric("Risikoklasse", prod['risk_class_x'])
                 
                 with col2:
                     # Umsatzstatistiken
@@ -406,9 +403,8 @@ def main():
                         st.markdown(f"**Jahresgebühr:** €{prod['price']}")
                         
                         # Zinssatz für Immobilienkredite anzeigen
-                        rate = prod.get('interest_rate') or prod.get('interest_rate_x') or prod.get('interest_rate_y')
-                        if pd.notna(rate):
-                            st.markdown(f"**Effektiver Jahreszins:** {rate}%")
+                        if 'interest_rate' in prod and pd.notna(prod['interest_rate']):
+                            st.markdown(f"**Effektiver Jahreszins:** {prod['interest_rate']}%")
                         
                         # Risiko-Indikator
                         risk_colors = {'niedrig': '🟢', 'mittel': '🟡', 'hoch': '🔴'}
