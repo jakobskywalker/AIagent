@@ -29,6 +29,12 @@ def prepare_features(df):
     numerical_features = ['revenue', 'credit_score']
     features_df[numerical_features] = scaler.fit_transform(features_df[numerical_features])
     
+    # Produkt-Feature-Engineering
+    # Jeder Kunde hat für jedes Produkt eine Spalte: 1 wenn er es besitzt, 0 sonst
+    for prod_id in [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]:
+        customers_with_product = ownership_df[ownership_df['prod_id'] == prod_id]['cust_id']
+        features_df[f'has_{prod_id}'] = features_df['cust_id'].isin(customers_with_product).astype(int)
+    
     # Wähle Features für das Modell
     feature_columns = [
         'age_bucket_encoded', 'revenue', 'credit_score',
@@ -105,7 +111,7 @@ def main():
     test_roc_auc = roc_auc_score(y_test, y_test_proba)
     
     # Ergebnisse ausgeben
-    print(f"\n🎯 Modell Performance:")
+    print(f"\n�� Modell Performance:")
     print(f"   Training Set:")
     print(f"     • Accuracy: {train_accuracy:.4f}")
     print(f"     • ROC-AUC: {train_roc_auc:.4f}")

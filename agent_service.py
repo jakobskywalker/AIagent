@@ -61,7 +61,7 @@ def build_feature_vector(cust_id: int, feature_columns: list[str], customers_df:
     # Produkt-Ownership Features
     customer_products = set(ownership_df[ownership_df['cust_id'] == cust_id]['prod_id'])
     
-    for prod_id in [101, 102, 103, 104, 105, 106]:
+    for prod_id in [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]:
         features[f'has_{prod_id}'] = 1 if prod_id in customer_products else 0
     feature_vector = [features[col] for col in feature_columns]
     
@@ -108,22 +108,28 @@ Erkläre in 1 Satz, warum {product_data['name']} passt."""
         'GoldCard': f"Die GoldCard bietet Ihnen mit {income_level} Einkommen weltweite Vorteile und Versicherungsschutz.",
         'LebensSchutz': f"In Ihrer Lebensphase {age_group} ist der LebensSchutz eine wichtige Absicherung für die Zukunft.",
         'DepotProfessional': f"Mit {income_level} Einkommen können Sie vom DepotProfessional mit erweiterten Trading-Funktionen profitieren.",
-        'UnfallSchutz': f"Der UnfallSchutz bietet Ihnen in jedem Alter umfassende Sicherheit für Beruf und Freizeit."
+        'UnfallSchutz': f"Der UnfallSchutz bietet Ihnen in jedem Alter umfassende Sicherheit für Beruf und Freizeit.",
+        'BauFinanz Standard': f"Mit {income_level} Einkommen und Alter {age_group} ist die klassische Baufinanzierung ideal für Ihren Immobilienerwerb.",
+        'WohnTraum Flex': f"Die flexible Immobilienfinanzierung passt zu Ihrer Lebenssituation mit {income_level} Einkommen und bietet Spielraum.",
+        'ImmoInvest Pro': f"Als Kapitalanleger mit {income_level} Einkommen nutzen Sie die Vorteile der ImmoInvest Pro Finanzierung.",
+        'ErstHeim Bonus': f"Als Erstkäufer im Alter {age_group} profitieren Sie von staatlicher Förderung und günstigen Konditionen."
     }
     
     return explanations.get(product_data['name'], 
                            f"{product_data['name']} passt zu Ihrem Profil mit Score {score:.2f}.")
 
-def recommend(cust_id: int, top_k: int = 3) -> List[Dict]:
+def recommend(cust_id: int, top_k: int = 3, scenario: str = "Ganzheitliche Beratung", **kwargs) -> List[Dict]:
     """
-    Empfiehlt die Top-k Produkte für einen Kunden
+    Empfiehlt die Top-k Produkte für einen Kunden basierend auf dem Beratungsanlass
     
     Args:
         cust_id: Kunden-ID
         top_k: Anzahl der Empfehlungen (default: 3)
+        scenario: Beratungsanlass
+        **kwargs: Zusätzliche Parameter (z.B. financing_need)
     
     Returns:
-        Liste von Dictionaries mit prod_id, name, score und reason
+        Liste von Dictionaries mit prod_id, name, score, reason und is_cross_sell
     """
     
     # Lade Daten
@@ -139,81 +145,151 @@ def recommend(cust_id: int, top_k: int = 3) -> List[Dict]:
     # Produkte, die der Kunde bereits besitzt
     owned_products = set(ownership_df[ownership_df['cust_id'] == cust_id]['prod_id'])
     
+    # Definiere Produktkategorien für verschiedene Szenarien
+    scenario_products = {
+        "Immobilienfinanzierung": {
+            'primary': [107, 108, 109, 110],  # Kredite
+            'cross_sell': [104, 106, 101]  # Lebensschutz, Unfallschutz, GiroPlus
+        },
+        "Kontoeröffnung": {
+            'primary': [101],  # GiroPlus
+            'cross_sell': [103, 102, 104]  # GoldCard, DepotBasic, LebensSchutz
+        },
+        "Vermögensaufbau": {
+            'primary': [102, 105],  # Depots
+            'cross_sell': [101, 103]  # GiroPlus, GoldCard
+        },
+        "Absicherung & Vorsorge": {
+            'primary': [104, 106],  # Versicherungen
+            'cross_sell': [101]  # GiroPlus
+        },
+        "Ganzheitliche Beratung": {
+            'primary': list(range(101, 111)),  # Alle Produkte
+            'cross_sell': []
+        }
+    }
+    
+    # Hole relevante Produkte für das Szenario
+    relevant_products = scenario_products.get(scenario, scenario_products["Ganzheitliche Beratung"])
+    primary_products = relevant_products['primary']
+    cross_sell_products = relevant_products['cross_sell']
+    
     # Ergebnisliste
     recommendations = []
     
-    # Für jedes Produkt
+    # Bewerte primäre Produkte
     for _, product in products_df.iterrows():
         prod_id = product['prod_id']
         
-        # Überspringe bereits besessene Produkte
+        # Skip bereits besessene Produkte
         if prod_id in owned_products:
             continue
         
-        # Berechne Score für dieses Produkt
-        if prod_id in model_package.get('models', {}):
-            # ML-basiertes Scoring mit vorhandenem Modell
+        # Berechne Score
+        if prod_id in model_package['models']:
+            # ML-basierter Score
             model = model_package['models'][prod_id]
-            feature_cols_pid = model_package['feature_columns_map'][prod_id]
-            features = build_feature_vector(cust_id, feature_cols_pid, customers_df, ownership_df, model_package['scaler'], model_package['label_encoder_age'])
-            score = model.predict_proba(features)[0][1]
-
-            # XAI nur bei LinearModellen (LogisticRegression)
-            contributions = None
+            if 'feature_map' in model_package:
+                feature_columns = model_package['feature_map'][prod_id]
+            else:
+                feature_columns = model_package['feature_columns_map'][prod_id]
+            
             try:
-                coeffs = model.coef_[0]
-                feature_columns = feature_cols_pid
-                contrib_raw = coeffs * features.flatten()
-                contributions = [
-                    {
-                        'feature': feature_columns[i],
-                        'value': float(features.flatten()[i]),
-                        'coefficient': float(coeffs[i]),
-                        'contribution': float(contrib_raw[i])
-                    }
-                    for i in range(len(feature_columns))
-                ]
-                contributions.sort(key=lambda x: abs(x['contribution']), reverse=True)
-            except Exception:
+                feature_vector = build_feature_vector(
+                    cust_id, feature_columns, customers_df, ownership_df, 
+                    model_package['scaler'], model_package['label_encoder_age']
+                )
+                score = model.predict_proba(feature_vector)[0][1]
+
+                # XAI: Beitrag jedes Features (nur für LR)
+                contributions = None
+                try:
+                    coeffs = model.coef_[0]
+                    contrib_raw = coeffs * feature_vector.flatten()
+                    contributions = [
+                        {
+                            'feature': feature_columns[i],
+                            'value': float(feature_vector.flatten()[i]),
+                            'coefficient': float(coeffs[i]),
+                            'contribution': float(contrib_raw[i])
+                        }
+                        for i in range(len(feature_columns))
+                    ]
+                    contributions.sort(key=lambda x: abs(x['contribution']), reverse=True)
+                except Exception:
+                    contributions = None
+            except Exception as e:
+                print(f"Fehler bei Vorhersage für Produkt {prod_id}: {e}")
+                score = 0.5
                 contributions = None
         else:
-            # Fallback: Heuristik (nur wenn kein Modell vorhanden)
-            base_score = 0.5
-            # Einkommens-Einfluss (Beispiele)
-            if customer_data['revenue'] > 150000 and product['category'] in ['Depot', 'Kreditkarte']:
-                base_score += 0.2
-            if customer_data['revenue'] < 50000 and product['category'] in ['Versicherung']:
-                base_score += 0.1
-
-            # Alterseinfluss
-            if customer_data['age_bucket'] == '60+' and product['category'] == 'Versicherung':
-                base_score += 0.1
-            score = min(base_score, 0.95)
+            score = 0.5
+        
+        # Anpasse Score basierend auf Szenario
+        is_primary = prod_id in primary_products
+        is_cross_sell = prod_id in cross_sell_products
+        
+        if scenario != "Ganzheitliche Beratung":
+            if is_primary:
+                score *= 2.0  # Priorisiere Hauptprodukte
+            elif is_cross_sell:
+                score *= 1.3  # Boost für Cross-Sell
+            else:
+                score *= 0.1  # Deprioritisiere irrelevante Produkte
+        
+        # Spezielle Anpassungen für Immobilienfinanzierung
+        if scenario == "Immobilienfinanzierung" and prod_id in [107, 108, 109, 110]:
+            financing_need = kwargs.get('financing_need', 0)
+            ltv_ratio = kwargs.get('ltv_ratio', 80)
+            
+            # Passe Score basierend auf Finanzierungsbedarf an
+            if prod_id == 110 and ltv_ratio <= 90:  # ErstHeim Bonus
+                score *= 1.5  # Bonus für Erstkäufer-geeignete Beleihung
+            elif prod_id == 109 and financing_need > 500000:  # ImmoInvest Pro
+                score *= 1.3  # Gut für große Finanzierungen
         
         # Generiere Erklärung
-        reason = generate_explanation(
-            customer_data, 
-            product.to_dict(), 
-            score,
-            use_openai=bool(openai.api_key)
-        )
+        product_data = product.to_dict()
+        reason = generate_explanation(customer_data, product_data, score, use_openai=False)
         
-        rec_entry = {
-            'prod_id': int(prod_id),
+        # Füge Cross-Sell Info hinzu
+        if is_cross_sell and scenario != "Ganzheitliche Beratung":
+            reason = "🔗 " + reason + " (Sinnvolle Ergänzung)"
+        
+        recommendations.append({
+            'prod_id': prod_id,
             'name': product['name'],
-            'score': float(score),
-            'reason': reason
-        }
-
-        if contributions:
-            rec_entry['contributions'] = contributions
-
-        recommendations.append(rec_entry)
+            'score': score,
+            'reason': reason,
+            'category': product['category'],
+            'is_cross_sell': is_cross_sell,
+            'is_primary': is_primary,
+            'contributions': contributions
+        })
     
-    # Sortiere nach Score (absteigend) und nehme Top-k
+    # Sortiere und filtere
     recommendations.sort(key=lambda x: x['score'], reverse=True)
     
-    return recommendations[:top_k]
+    # Stelle sicher, dass mindestens ein Hauptprodukt dabei ist
+    if scenario != "Ganzheitliche Beratung":
+        primary_recs = [r for r in recommendations if r['is_primary']]
+        cross_sell_recs = [r for r in recommendations if r['is_cross_sell']]
+        other_recs = [r for r in recommendations if not r['is_primary'] and not r['is_cross_sell']]
+        
+        # Nimm top primäre Produkte + top Cross-Sell
+        num_primary = min(len(primary_recs), max(1, top_k // 2))
+        num_cross_sell = min(len(cross_sell_recs), top_k - num_primary)
+        
+        final_recommendations = primary_recs[:num_primary] + cross_sell_recs[:num_cross_sell]
+        
+        # Fülle auf, falls nötig
+        if len(final_recommendations) < top_k:
+            remaining = top_k - len(final_recommendations)
+            final_recommendations.extend(other_recs[:remaining])
+        
+        return final_recommendations[:top_k]
+    else:
+        return recommendations[:top_k]
 
 def top_potential_analysis(top_k_per_customer: int = 3):
     """Berechnet für alle Kunden den erwarteten Gewinn basierend auf Produktempfehlungen

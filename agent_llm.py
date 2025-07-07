@@ -21,6 +21,53 @@ _products_df = None
 _ownership_df = None
 _sales_df = None
 
+# Cache für Kundennamen zur schnellen Erkennung in Freitext
+_customer_name_tokens = None
+
+# --------------------------------------------------------
+# Helper: Erkenne, ob eine Frage bank-bezogen ist
+# --------------------------------------------------------
+
+def _load_customer_name_tokens():
+    """Lädt und cached alle Vor- und Nachnamen (lowercase)"""
+    global _customer_name_tokens
+    if _customer_name_tokens is None:
+        customers_df, _, _, _ = get_data()
+        first_names = customers_df['first_name'].str.lower().tolist()
+        last_names = customers_df['last_name'].str.lower().tolist()
+        _customer_name_tokens = set(first_names + last_names)
+    return _customer_name_tokens
+
+
+def is_bank_related(message: str) -> bool:
+    """Heuristik, ob die Nachricht einen Bank-Use-Case darstellt"""
+    msg_lower = message.lower()
+
+    # 1) Schlüsselwörter
+    bank_keywords = [
+        "empfehl", "vorschlag", "snapshot", "übersicht", "profil",
+        "produkt", "preis", "kosten", "liste", "top potential", "top-potential",
+        "top-kunde", "top-gewinn", "recommend", "verkauf", "verkaufen", "verkaufe",
+        "abschließen", "angebot", "kunde"  # 'kunde' recht allgemein aber im Kontext wichtig
+    ]
+    if any(kw in msg_lower for kw in bank_keywords):
+        return True
+
+    # 2) Pattern: "Kunde <Zahl>"
+    import re as _re
+    if _re.search(r"kunde\s*\d+", msg_lower):
+        return True
+
+    # 3) Enthält Namen eines Kunden?
+    tokens = set(msg_lower.strip().split())
+    customer_tokens = _load_customer_name_tokens()
+    intersection = tokens & customer_tokens
+    # Wenn sowohl Vor- als auch Nachname vorkommen, ist es bank-bezogen
+    if len(intersection) >= 2:
+        return True
+
+    return False
+
 def get_data():
     """Lade alle benötigten DataFrames"""
     global _customers_df, _products_df, _ownership_df, _sales_df
@@ -100,6 +147,14 @@ def get_customer_snapshot(customer_id: int) -> str:
             for _, prod in customer_products_detailed.iterrows():
                 result += f"- {prod['name']} (seit {prod['since_date']})\n"
                 result += f"  Kategorie: {prod['category']} | Gebühr: €{prod['price']}/Jahr\n"
+                
+                # Für Kredite: Zeige individuelle Details
+                if pd.notna(prod['deal_volume']):
+                    result += f"  💰 Kreditvolumen: €{prod['deal_volume']:,.0f}\n"
+                    result += f"  📊 Individueller Zinssatz: {prod['interest_rate_x']}% p.a.\n"
+                    result += f"  🏷️ Kredittyp: {prod['credit_type']}\n"
+                    result += f"  🎯 Individuelle Risikoklasse: {prod['risk_class_x']}\n"
+                
                 total_fees += prod['price']
             
             result += f"\n💰 **Jährliche Gesamtgebühren:** €{total_fees:,.2f}\n"
@@ -155,15 +210,21 @@ def explain_product(product_identifier: str) -> str:
         result += f"📋 **Details:**\n"
         result += f"- Kategorie: {prod['category']}\n"
         result += f"- Risikoklasse: {prod['risk_class']}\n"
-        result += f"- Jahresgebühr: €{prod['price']}\n\n"
-        result += f"📝 **Beschreibung:**\n{prod['short_desc']}\n\n"
+        result += f"- Jahresgebühr: €{prod['price']}\n"
+        
+        # Zinssatz für Immobilienkredite hinzufügen
+        if 'interest_rate' in prod and pd.notna(prod['interest_rate']):
+            result += f"- Effektiver Jahreszins: {prod['interest_rate']}%\n"
+        
+        result += f"\n📝 **Beschreibung:**\n{prod['short_desc']}\n\n"
         
         # Zusätzliche Infos je nach Kategorie
         category_info = {
             'Giro': "💳 Girokonto für den täglichen Zahlungsverkehr mit verschiedenen Zusatzleistungen.",
             'Depot': "📈 Wertpapierdepot für Aktien, Fonds und andere Anlageprodukte.",
             'Kreditkarte': "💳 Kreditkarte für weltweite Zahlungen mit zusätzlichen Services.",
-            'Versicherung': "🛡️ Absicherung gegen verschiedene Lebensrisiken."
+            'Versicherung': "🛡️ Absicherung gegen verschiedene Lebensrisiken.",
+            'Immobilienkredit': "🏠 Finanzierung für Immobilienkauf, -bau oder -renovierung mit attraktiven Konditionen."
         }
         
         if prod['category'] in category_info:
@@ -235,6 +296,152 @@ def top_potential_customer(top_k: int = 3) -> str:
         return result
     except Exception as e:
         return f"Fehler bei Top-Potential-Analyse: {str(e)}"
+
+@tool
+def get_scenario_recommendations(customer_id: int, scenario: str = "Ganzheitliche Beratung") -> str:
+    """
+    Gibt maßgeschneiderte Produktempfehlungen basierend auf dem Beratungsanlass.
+    
+    Args:
+        customer_id: Die ID des Kunden (1-50)
+        scenario: Der Beratungsanlass (Immobilienfinanzierung, Kontoeröffnung, Vermögensaufbau, Absicherung & Vorsorge, Ganzheitliche Beratung)
+    
+    Returns:
+        String mit szenario-spezifischen Empfehlungen inklusive Bundle-Angebote
+    """
+    try:
+        from agent_service import recommend
+        
+        # Hole Empfehlungen für das Szenario
+        recommendations = recommend(customer_id, top_k=5, scenario=scenario)
+        
+        if not recommendations:
+            return f"Keine passenden Empfehlungen für Kunde {customer_id} gefunden."
+        
+        # Formatiere Ausgabe
+        result = f"🎯 **Empfehlungen für {scenario}**\n\n"
+        
+        # Trenne Haupt- und Cross-Sell Produkte
+        primary = [r for r in recommendations if r.get('is_primary', False)]
+        cross_sell = [r for r in recommendations if r.get('is_cross_sell', False)]
+        
+        if primary:
+            result += "**Hauptempfehlungen:**\n"
+            for i, rec in enumerate(primary, 1):
+                result += f"{i}. **{rec['name']}** (Score: {rec['score']:.1%})\n"
+                result += f"   {rec['reason']}\n\n"
+        
+        if cross_sell:
+            result += "\n**🔗 Cross-Selling Empfehlungen:**\n"
+            for rec in cross_sell:
+                result += f"• **{rec['name']}** - {rec['reason']}\n"
+        
+        # Bundle-Angebot berechnen
+        if len(recommendations) >= 2:
+            products_df = pd.read_csv('data/products.csv')
+            top_3 = recommendations[:3]
+            total_price = sum(products_df[products_df['prod_id'] == r['prod_id']]['price'].values[0] 
+                            for r in top_3)
+            bundle_price = total_price * 0.9  # 10% Rabatt
+            
+            result += f"\n\n💎 **Bundle-Angebot:**\n"
+            bundle_names = " + ".join([r['name'] for r in top_3])
+            result += f"Paket: {bundle_names}\n"
+            result += f"Einzelpreis: €{total_price:.2f}/Jahr\n"
+            result += f"Bundle-Preis: €{bundle_price:.2f}/Jahr\n"
+            result += f"**Ersparnis: €{total_price - bundle_price:.2f}/Jahr**"
+        
+        return result
+        
+    except Exception as e:
+        return f"Fehler bei szenario-basierten Empfehlungen: {str(e)}"
+
+@tool 
+def analyze_cross_sell_potential(customer_id: int) -> str:
+    """
+    Analysiert das Cross-Selling und Upselling Potential eines Kunden.
+    
+    Args:
+        customer_id: Die ID des Kunden (1-50)
+    
+    Returns:
+        String mit Analyse des Cross-Sell Potentials
+    """
+    try:
+        customers_df, products_df, ownership_df, _ = get_data()
+        
+        # Hole Kundendaten
+        customer = customers_df[customers_df['cust_id'] == customer_id]
+        if customer.empty:
+            return f"Kunde {customer_id} nicht gefunden."
+        
+        customer = customer.iloc[0]
+        
+        # Produkte die der Kunde hat
+        owned_products = ownership_df[ownership_df['cust_id'] == customer_id]['prod_id'].tolist()
+        owned_product_names = products_df[products_df['prod_id'].isin(owned_products)]['name'].tolist()
+        
+        result = f"🎯 **Cross-Sell Analyse für {customer['first_name']} {customer['last_name']}**\n\n"
+        
+        # Analysiere fehlende Produktkategorien
+        all_categories = products_df['category'].unique()
+        owned_categories = products_df[products_df['prod_id'].isin(owned_products)]['category'].unique()
+        missing_categories = set(all_categories) - set(owned_categories)
+        
+        result += f"**Aktuelle Produkte:** {', '.join(owned_product_names)}\n\n"
+        
+        # Cross-Sell Regeln
+        cross_sell_rules = {
+            101: [103, 102],  # GiroPlus → GoldCard, DepotBasic
+            102: [105],       # DepotBasic → DepotProfessional (Upsell)
+            103: [101],       # GoldCard → GiroPlus
+            104: [106],       # LebensSchutz → UnfallSchutz
+            107: [104, 106],  # BauFinanz → Versicherungen
+            108: [104, 106],  # WohnTraum → Versicherungen
+            109: [105],       # ImmoInvest → DepotProfessional
+            110: [104, 101]   # ErstHeim → LebensSchutz, GiroPlus
+        }
+        
+        # Finde Cross-Sell Opportunities
+        opportunities = []
+        for owned_id in owned_products:
+            if owned_id in cross_sell_rules:
+                for target_id in cross_sell_rules[owned_id]:
+                    if target_id not in owned_products:
+                        target_product = products_df[products_df['prod_id'] == target_id].iloc[0]
+                        opportunities.append(target_product['name'])
+        
+        if opportunities:
+            result += "**🔗 Cross-Sell Opportunities:**\n"
+            for opp in set(opportunities):
+                result += f"• {opp}\n"
+        
+        # Upsell Potential
+        if 102 in owned_products and 105 not in owned_products:
+            result += "\n**⬆️ Upsell Potential:**\n"
+            result += "• Upgrade von DepotBasic zu DepotProfessional\n"
+        
+        # Fehlende Kategorien
+        if missing_categories:
+            result += f"\n**📊 Ungenutzte Produktkategorien:** {', '.join(missing_categories)}\n"
+        
+        # Einschätzung
+        total_products = len(products_df)
+        coverage = len(owned_products) / total_products * 100
+        
+        result += f"\n**📈 Produktabdeckung:** {coverage:.1f}%\n"
+        
+        if coverage < 30:
+            result += "➡️ Hohes Cross-Sell Potential vorhanden!"
+        elif coverage < 50:
+            result += "➡️ Mittleres Cross-Sell Potential"
+        else:
+            result += "➡️ Kunde bereits gut ausgestattet"
+        
+        return result
+        
+    except Exception as e:
+        return f"Fehler bei Cross-Sell Analyse: {str(e)}"
 
 def mock_chat_response(user_msg: str, customer_id: int = None) -> str:
     """
@@ -330,7 +537,7 @@ Du hast Zugriff auf folgende Tools:
 - list_all_products: Listet alle verfügbaren Produkte auf
 - top_potential_customer: Liefert den Kunden mit dem höchsten erwarteten Gewinn basierend auf Produktempfehlungen
 
-Nutze diese Tools, um präzise und hilfreiche Antworten zu geben.
+Nutze diese Tools, wenn sie dir helfen, die Frage präzise zu beantworten. Falls kein Tool passt, beantworte die Frage direkt ohne einen Tool-Aufruf.
 Antworte immer auf Deutsch und sei freundlich und professionell.
 """
     
@@ -380,8 +587,24 @@ def chat_llm(user_msg: str, api_key: str, customer_id: int = None, chat_history:
         # Wenn kein API Key oder leer, nutze Mock
         if not api_key or api_key.strip() == "":
             return "🤖 **Mock-Modus** (Kein API Key)\n\n" + mock_chat_response(user_msg, customer_id)
-        
-        # Versuche mit OpenAI
+
+        # --------------------------------------------------
+        # Router-Logik mit verbesserter Bank-Erkennung
+        # --------------------------------------------------
+        if not is_bank_related(user_msg):
+            # Allgemeine Frage → direktes LLM ohne Function-Calling
+            general_llm = ChatOpenAI(
+                api_key=api_key,
+                model="gpt-3.5-turbo",
+                temperature=0.7
+            )
+            general_response = general_llm.invoke(user_msg)
+            try:
+                return general_response.content
+            except AttributeError:
+                return str(general_response)
+
+        # Bank-bezogene Frage → LangChain Agent mit Tools
         agent = create_agent(api_key, customer_id)
         
         # Konvertiere Chat-Historie wenn vorhanden

@@ -62,13 +62,27 @@ def main():
     with st.sidebar:
         st.markdown("## 🔧 Einstellungen")
         
-        # Kundennummer Eingabe
-        st.markdown("### Kundennummer")
+        # Kundenauswahl per Name oder Nummer
+        st.markdown("### Kunde auswählen")
+        current_id = st.session_state.get('current_customer_id', 1)
+        if current_id is None:
+            current_id = 1
+        name_options = customers_df.apply(lambda r: f"{r['first_name']} {r['last_name']} (ID {r['cust_id']})", axis=1).tolist()
+        selected_name = st.selectbox(
+            "Kundenname:",
+            options=name_options,
+            index=current_id - 1,
+            help="Wählen Sie einen Kunden nach Name"
+        )
+        # Extrahiere ID aus Auswahl
+        selected_id = int(selected_name.split('(ID')[1].strip(') ').strip())
+
+        # Kundennummer Eingabe (Optional Override)
         customer_id = st.number_input(
-            "Wählen Sie eine Kundennummer:",
+            "Kundennummer (Override):",
             min_value=1,
             max_value=len(customers_df),
-            value=1,
+            value=selected_id,
             step=1,
             help="Geben Sie eine Kundennummer zwischen 1 und 50 ein"
         )
@@ -112,88 +126,145 @@ def main():
     # Hauptbereich mit Tabs
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🎯 Empfehlungen", "📊 Snapshot", "❓ Produkt erklären", "💬 Chat mit AI", "📜 Chat-Historie", "💎 Top Potential"])
     
-    # Tab 1: Empfehlungen
+    # Tab 1: Empfehlung
     with tab1:
-        st.markdown("## 🎯 Produktempfehlungen")
-        st.markdown("Erhalten Sie KI-basierte Produktempfehlungen für den ausgewählten Kunden.")
+        st.markdown("## 🎯 Produktempfehlung")
         
-        col1, col2 = st.columns([1, 3])
+        # Beratungsanlass auswählen
+        st.markdown("### 📋 Beratungsanlass")
+        scenario = st.selectbox(
+            "Was ist der Grund für die Beratung?",
+            ["Ganzheitliche Beratung", "Immobilienfinanzierung", "Kontoeröffnung", 
+             "Vermögensaufbau", "Absicherung & Vorsorge"],
+            help="Wählen Sie den Beratungsanlass aus, um passende Produktempfehlungen zu erhalten"
+        )
         
-        with col1:
-            # Anzahl Empfehlungen
-            top_k = st.slider("Anzahl Empfehlungen:", 1, 5, 3)
+        # Zusätzliche Felder für Immobilienfinanzierung
+        if scenario == "Immobilienfinanzierung":
+            col1, col2 = st.columns(2)
+            with col1:
+                purchase_price = st.number_input(
+                    "Kaufpreis der Immobilie (€)",
+                    min_value=50000,
+                    max_value=2000000,
+                    value=350000,
+                    step=10000
+                )
+            with col2:
+                equity = st.number_input(
+                    "Verfügbares Eigenkapital (€)",
+                    min_value=0,
+                    max_value=1000000,
+                    value=70000,
+                    step=5000
+                )
+
+            # Berechne Finanzierungsbedarf
+            financing_need = purchase_price - equity
+            ltv_ratio = (financing_need / purchase_price) * 100
+            st.info(f"💰 Finanzierungsbedarf: €{financing_need:,.0f} ({ltv_ratio:.1f}% Beleihung)")
+
+        st.markdown("### 🎯 Empfehlungen abrufen")
+        st.markdown("Basierend auf dem Kundenprofil und Beratungsanlass werden die besten Produkte empfohlen.")
+
+        # Anzahl der Empfehlungen
+        num_recommendations = st.slider(
+            "Anzahl der Empfehlungen:",
+            min_value=1,
+            max_value=5,
+            value=3,
+            help="Wie viele Produktempfehlungen sollen angezeigt werden?"
+        )
+
+        # Button für Empfehlungen
+        if st.button("🚀 Empfehlung anfordern", type="primary", use_container_width=True):
+            with st.spinner("Generiere Empfehlungen..."):
+                extra_params = {'scenario': scenario}
+                if scenario == "Immobilienfinanzierung":
+                    extra_params['financing_need'] = financing_need
+                    extra_params['ltv_ratio'] = ltv_ratio
+
+                recommendations = recommend(customer_id, top_k=num_recommendations, **extra_params)
+                st.session_state['recommendations'] = recommendations
+
+        # Empfehlungen anzeigen
+        if 'recommendations' in st.session_state and st.session_state['recommendations']:
+            st.markdown("---")
+            st.markdown("### 📊 Ergebnisse")
             
-            # Button für Empfehlungen
-            if st.button("🚀 Empfehlung anfordern", type="primary", use_container_width=True):
-                with st.spinner("Generiere Empfehlungen..."):
-                    recommendations = recommend(customer_id, top_k=top_k)
-                    st.session_state['recommendations'] = recommendations
-        
-        with col2:
-            # Zeige Empfehlungen
-            if 'recommendations' in st.session_state and st.session_state['recommendations']:
-                st.markdown("### 📋 Empfohlene Produkte")
-                
-                for i, rec in enumerate(st.session_state['recommendations'], 1):
+            recommendations = st.session_state['recommendations']
+            
+            # Trenne Haupt- und Cross-Sell Produkte
+            primary_products = [r for r in recommendations if r.get('is_primary', False)]
+            cross_sell_products = [r for r in recommendations if r.get('is_cross_sell', False)]
+            
+            # Zeige Hauptprodukte
+            if primary_products:
+                st.markdown("#### 🎯 Hauptempfehlungen")
+                for i, rec in enumerate(primary_products):
                     with st.container():
-                        col_name, col_score = st.columns([3, 1])
-                        
-                        with col_name:
-                            st.markdown(f"**{i}. {rec['name']}** (Produkt {rec['prod_id']})")
-                            st.markdown(f"_{rec['reason']}_")
-
-                            # XAI Expander
-                            if rec.get('contributions'):
-                                with st.expander("🧠 XAI Details", expanded=False):
-                                    alias = {
-                                        'age_bucket_encoded': 'Altersgruppe',
-                                        'revenue': 'Einkommen (norm.)',
-                                        'credit_score': 'Kredit-Score (norm.)',
-                                        'has_101': 'Besitzt GiroPlus',
-                                        'has_102': 'Besitzt DepotBasic',
-                                        'has_103': 'Besitzt GoldCard',
-                                        'has_104': 'Besitzt LebensSchutz',
-                                        'has_105': 'Besitzt DepotProfessional',
-                                        'has_106': 'Besitzt UnfallSchutz'
-                                    }
-                                    dfc = pd.DataFrame(rec['contributions'])
-                                    dfc['display'] = dfc['feature'].map(alias).fillna(dfc['feature'])
-                                    total_abs = dfc['contribution'].abs().sum()
-                                    dfc['percent'] = (dfc['contribution'].abs()/total_abs*100).round(1)
-                                    # Summary
-                                    top_row = dfc.iloc[0]
-                                    direction = "erhöht" if top_row['contribution']>0 else "senkt"
-                                    st.markdown(f"**Haupttreiber:** *{top_row['display']}* – {direction} die Abschlusswahrscheinlichkeit um ca. {top_row['percent']} %.")
-
-                                    # Bar chart mit Farben
-                                    plot_df = dfc.head(5)[['display','contribution']]
-                                    chart = alt.Chart(plot_df).mark_bar().encode(
-                                        y=alt.Y('display:N', title='Feature', sort='-x'),
-                                        x=alt.X('contribution:Q', title='Beitrag'),
-                                        color=alt.condition(alt.datum.contribution > 0,
-                                                           alt.value('#2ecc71'),  # grün
-                                                           alt.value('#e74c3c'))   # rot
-                                    )
-                                    st.altair_chart(chart, use_container_width=True)
-                                    st.caption("Grün = positiver Einfluss, Rot = negativer Einfluss (Werte normiert auf Top-5-Beiträge)")
-                        
-                        with col_score:
-                            # Score als Prozentbalken
-                            score_percent = int(rec['score'] * 100)
-                            st.metric("Score", f"{score_percent}%")
-                            st.progress(rec['score'])
-                        
-                        st.markdown("---")
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.markdown(f"**{i+1}. {rec['name']}**")
+                            st.markdown(f"📝 {rec['reason']}")
+                            st.markdown(f"🏷️ Kategorie: {rec['category']}")
+                        with col2:
+                            st.metric("Score", f"{rec['score']:.2%}")
+                    # XAI Expander
+                    if rec.get('contributions'):
+                        with st.expander("🧠 XAI Details", expanded=False):
+                            dfc = pd.DataFrame(rec['contributions']).head(5)[['feature','contribution']]
+                            dfc['impact'] = dfc['contribution'].round(3)
+                            dfc = dfc.rename(columns={'feature':'Feature','impact':'Beitrag'})
+                            st.table(dfc)
+            
+            # Zeige Cross-Sell Produkte
+            if cross_sell_products:
+                st.markdown("#### 🔗 Ergänzende Produkte (Cross-Selling)")
+                for rec in cross_sell_products:
+                    with st.container():
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.markdown(f"**{rec['name']}**")
+                            st.markdown(f"📝 {rec['reason']}")
+                        with col2:
+                            st.metric("Score", f"{rec['score']:.2%}")
+            
+            # Bundle-Angebot
+            if len(recommendations) >= 2:
+                st.markdown("---")
+                st.markdown("### 💎 Bundle-Angebot")
                 
-                # DataFrame-Ansicht
-                st.markdown("### 📊 Übersicht als Tabelle")
-                df_recommendations = pd.DataFrame(st.session_state['recommendations'])
-                df_recommendations['Score (%)'] = (df_recommendations['score'] * 100).round(1)
-                df_recommendations = df_recommendations[['name', 'Score (%)', 'reason']]
-                df_recommendations.columns = ['Produkt', 'Score (%)', 'Begründung']
-                st.dataframe(df_recommendations, use_container_width=True)
-            else:
-                st.info("👆 Klicken Sie auf 'Empfehlung anfordern' um Produktempfehlungen zu erhalten.")
+                # Berechne Bundle-Rabatt
+                total_price = sum(products_df[products_df['prod_id'] == r['prod_id']]['price'].values[0] 
+                                for r in recommendations[:3])
+                bundle_discount = 0.1 if len(recommendations) >= 3 else 0.05
+                bundle_price = total_price * (1 - bundle_discount)
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Einzelpreis gesamt", f"€{total_price:.2f}/Jahr")
+                with col2:
+                    st.metric("Bundle-Preis", f"€{bundle_price:.2f}/Jahr")
+                with col3:
+                    st.metric("Ihre Ersparnis", f"€{total_price - bundle_price:.2f}/Jahr")
+                
+                bundle_products = " + ".join([r['name'] for r in recommendations[:3]])
+                st.success(f"🎁 Bundle: {bundle_products}")
+            
+            # Speichere in DataFrame für Export
+            df_recommendations = pd.DataFrame(recommendations)
+            
+            # Download-Button
+            csv = df_recommendations.to_csv(index=False)
+            st.download_button(
+                label="📥 Empfehlungen herunterladen",
+                data=csv,
+                file_name=f"empfehlungen_kunde_{customer_id}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("👆 Klicken Sie auf 'Empfehlung anfordern' um Produktempfehlungen zu erhalten.")
     
     # Tab 2: Snapshot
     with tab2:
@@ -219,6 +290,17 @@ def main():
                     for _, prod in customer_products_detailed.iterrows():
                         st.markdown(f"• **{prod['name']}** (seit {prod['since_date']})")
                         st.markdown(f"  Kategorie: {prod['category']} | Gebühr: €{prod['price']}/Jahr")
+                        
+                        # Für Kredite: Zeige individuelle Details
+                        if pd.notna(prod.get('deal_volume')):
+                            with st.expander(f"📊 Kreditdetails {prod['name']}", expanded=False):
+                                col_a, col_b = st.columns(2)
+                                with col_a:
+                                    st.metric("Kreditvolumen", f"€{prod['deal_volume']:,.0f}")
+                                    st.metric("Individueller Zinssatz", f"{prod['interest_rate']}% p.a.")
+                                with col_b:
+                                    st.metric("Kredittyp", prod['credit_type'])
+                                    st.metric("Risikoklasse", prod['risk_class'])
                 
                 with col2:
                     # Umsatzstatistiken
@@ -320,6 +402,10 @@ def main():
                     with col_b:
                         st.markdown(f"**Jahresgebühr:** €{prod['price']}")
                         
+                        # Zinssatz für Immobilienkredite anzeigen
+                        if 'interest_rate' in prod and pd.notna(prod['interest_rate']):
+                            st.markdown(f"**Effektiver Jahreszins:** {prod['interest_rate']}%")
+                        
                         # Risiko-Indikator
                         risk_colors = {'niedrig': '🟢', 'mittel': '🟡', 'hoch': '🔴'}
                         risk_icon = risk_colors.get(prod['risk_class'], '⚪')
@@ -336,7 +422,8 @@ def main():
                     'Giro': "Girokonto für den täglichen Zahlungsverkehr mit verschiedenen Zusatzleistungen.",
                     'Depot': "Wertpapierdepot für Aktien, Fonds und andere Anlageprodukte.",
                     'Kreditkarte': "Kreditkarte für weltweite Zahlungen mit zusätzlichen Services.",
-                    'Versicherung': "Absicherung gegen verschiedene Lebensrisiken."
+                    'Versicherung': "Absicherung gegen verschiedene Lebensrisiken.",
+                    'Immobilienkredit': "Finanzierung für Immobilienkauf, -bau oder -renovierung mit individuellen Konditionen."
                 }
                 
                 st.markdown(category_info.get(prod['category'], "Bankprodukt mit speziellen Features."))

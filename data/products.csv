@@ -1,7 +1,11 @@
-prod_id,name,category,risk_class,price,short_desc
-101,GiroPlus,Giro,niedrig,89.9,Premium Girokonto mit kostenlosen Überweisungen und Kreditkarte inklusive
-102,DepotBasic,Depot,mittel,12.5,Günstige Wertpapierdepot für Einsteiger mit reduzierten Ordergebühren
-103,GoldCard,Kreditkarte,niedrig,150.0,Premium Kreditkarte mit Versicherungsschutz und weltweiten Vorteilen
-104,LebensSchutz,Versicherung,niedrig,280.0,Umfassende Lebensversicherung mit flexiblen Beitragszahlungen und Gewinnbeteiligung
-105,DepotProfessional,Depot,hoch,45.0,Professionelles Depot für aktive Trader mit erweiterten Analysefunktionen
-106,UnfallSchutz,Versicherung,niedrig,120.0,Umfassender Unfallschutz für Beruf und Freizeit mit schneller Auszahlung
+prod_id,name,category,risk_class,price,interest_rate,short_desc
+101,GiroPlus,Giro,niedrig,89.9,,Premium Girokonto mit kostenlosen Überweisungen und Kreditkarte inklusive
+102,DepotBasic,Depot,mittel,12.5,,Günstige Wertpapierdepot für Einsteiger mit reduzierten Ordergebühren
+103,GoldCard,Kreditkarte,niedrig,150.0,,Premium Kreditkarte mit Versicherungsschutz und weltweiten Vorteilen
+104,LebensSchutz,Versicherung,niedrig,280.0,,Umfassende Lebensversicherung mit flexiblen Beitragszahlungen und Gewinnbeteiligung
+105,DepotProfessional,Depot,hoch,45.0,,Professionelles Depot für aktive Trader mit erweiterten Analysefunktionen
+106,UnfallSchutz,Versicherung,niedrig,120.0,,Umfassender Unfallschutz für Beruf und Freizeit mit schneller Auszahlung
+107,BauFinanz Standard,Immobilienkredit,mittel,350.0,3.85,"Klassische Baufinanzierung mit flexiblen Laufzeiten von 10-30 Jahren und Sondertilgungsoption (Zinssatz ab 3,85% p.a.)"
+108,WohnTraum Flex,Immobilienkredit,mittel,450.0,4.25,"Flexible Immobilienfinanzierung mit variablem Zinssatz und kostenloser Ratenpausenoption (Zinssatz ab 4,25% p.a.)"
+109,ImmoInvest Pro,Immobilienkredit,hoch,550.0,4.95,"Finanzierung für Kapitalanleger mit bis zu 100% Beleihung und steuerlichen Vorteilen (Zinssatz ab 4,95% p.a.)"
+110,ErstHeim Bonus,Immobilienkredit,niedrig,250.0,3.45,"Spezialfinanzierung für Erstkäufer mit staatlicher Förderung und reduzierten Zinsen (Zinssatz ab 3,45% p.a.)"

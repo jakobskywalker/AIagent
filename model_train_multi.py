@@ -43,11 +43,15 @@ def train_models(df_enc: pd.DataFrame, feature_cols: list[int]):
     models = {}
     metrics = {}
     feature_map = {}
-    for pid in [101, 102, 103, 104, 105, 106]:
-        y = df_enc[f'has_{pid}']
-        feature_cols_pid = [c for c in feature_cols if c != f'has_{pid}']
+    # Trainiere für jedes Produkt ein Modell
+    models = {}
+    product_ids = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]
+    
+    for product_id in product_ids:
+        y = df_enc[f'has_{product_id}']
+        feature_cols_pid = [c for c in feature_cols if c != f'has_{product_id}']
         X = df_enc[feature_cols_pid]
-        feature_map[pid] = feature_cols_pid
+        feature_map[product_id] = feature_cols_pid
 
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, stratify=y, random_state=42
@@ -57,9 +61,9 @@ def train_models(df_enc: pd.DataFrame, feature_cols: list[int]):
         clf.fit(X_train, y_train)
 
         auc = roc_auc_score(y_test, clf.predict_proba(X_test)[:, 1])
-        models[pid] = clf
-        metrics[pid] = float(auc)
-        print(f"Produkt {pid}: ROC-AUC {auc:.3f}")
+        models[product_id] = clf
+        metrics[product_id] = float(auc)
+        print(f"Produkt {product_id}: ROC-AUC {auc:.3f}")
     return models, metrics, feature_map
 
 

@@ -1,1 +1,31 @@
-[]
+[
+  {
+    "session_id": "20250705_152424",
+    "timestamp": "2025-07-05T15:24:24.580561",
+    "customer_id": 1,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Wie alt ist Barack Obama"
+      },
+      {
+        "role": "assistant",
+        "content": "Barack Obama wurde am 4. August 1961 geboren. Stand heute (Oktober 2021) ist er 60 Jahre alt."
+      },
+      {
+        "role": "user",
+        "content": "Ich will Kunde 3 etwas verkaufen"
+      },
+      {
+        "role": "assistant",
+        "content": "Guten Tag, wie kann ich Ihnen behilflich sein? Was möchten Sie kaufen?"
+      }
+    ],
+    "message_count": 4,
+    "metadata": {
+      "saved_at": "2025-07-05T15:24:24.579679",
+      "api_mode": "OpenAI",
+      "auto_saved": true
+    }
+  }
+]

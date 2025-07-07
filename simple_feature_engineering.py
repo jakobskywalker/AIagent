@@ -17,7 +17,10 @@ def create_features():
     features_df = customers_df.copy()
     unique_products = ownership_df['prod_id'].unique()
     
-    for prod_id in unique_products:
+    # Stelle sicher, dass alle Produkte von 101-110 vorhanden sind
+    all_products = list(range(101, 111))  # 101 bis 110
+    
+    for prod_id in all_products:
         customers_with_product = ownership_df[ownership_df['prod_id'] == prod_id]['cust_id'].unique()
         features_df[f'has_{prod_id}'] = features_df['cust_id'].isin(customers_with_product).astype(int)
     
