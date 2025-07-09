@@ -248,6 +248,9 @@ def recommend(cust_id: int, top_k: int = 3, scenario: str = "Ganzheitliche Berat
             elif prod_id == 109 and financing_need > 500000:  # ImmoInvest Pro
                 score *= 1.3  # Gut für große Finanzierungen
         
+        # Score auf [0, 1] beschränken, damit Prozentwerte max. 100% betragen
+        score = max(0.0, min(score, 1.0))
+        
         # Generiere Erklärung
         product_data = product.to_dict()
         reason = generate_explanation(customer_data, product_data, score, use_openai=False)

@@ -213,10 +213,32 @@ def main():
                     # XAI Expander
                     if rec.get('contributions'):
                         with st.expander("🧠 XAI Details", expanded=False):
-                            dfc = pd.DataFrame(rec['contributions']).head(5)[['feature','contribution']]
-                            dfc['impact'] = dfc['contribution'].round(3)
-                            dfc = dfc.rename(columns={'feature':'Feature','impact':'Beitrag'})
-                            st.table(dfc)
+                            contrib_df = pd.DataFrame(rec['contributions']).head(5)[['feature', 'contribution']]
+
+                            # Mapping technischer Feature-Namen → verständliche Labels
+                            feature_labels = {
+                                'age_bucket_encoded': 'Altersgruppe',
+                                'revenue': 'Einkommen',
+                                'credit_score': 'Kredit-Score',
+                            }
+                            for _, p in products_df.iterrows():
+                                feature_labels[f'has_{p["prod_id"]}'] = f'Besitzt {p["name"]}'
+
+                            # Anwenderfreundliche Spalten vorbereiten
+                            contrib_df['Label'] = contrib_df['feature'].map(feature_labels).fillna(contrib_df['feature'])
+                            contrib_df['AbsImpact'] = contrib_df['contribution'].abs()
+                            total_abs = contrib_df['AbsImpact'].sum() or 1.0
+                            contrib_df['Einfluss (%)'] = (contrib_df['AbsImpact'] / total_abs * 100).round(1)
+
+                            # Sortiere nach Einflussstärke
+                            contrib_df = contrib_df.sort_values('AbsImpact', ascending=False)
+
+                            st.markdown("**Wichtigste Einflussfaktoren:**")
+                            for _, row in contrib_df.iterrows():
+                                sign = "📈" if row['contribution'] > 0 else "📉"
+                                st.markdown(f"{sign} **{row['Label']}** – {row['Einfluss (%)']:.1f}%")
+                            
+                            st.caption("📘 Positive Faktoren (📈) erhöhen den Empfehlungsscore, negative (📉) senken ihn.")
             
             # Zeige Cross-Sell Produkte
             if cross_sell_products:

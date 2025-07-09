@@ -57,7 +57,7 @@ def train_models(df_enc: pd.DataFrame, feature_cols: list[int]):
             X, y, test_size=0.2, stratify=y, random_state=42
         )
 
-        clf = LogisticRegression(max_iter=1000, class_weight='balanced', n_jobs=1)
+        clf = LogisticRegression(max_iter=1000, class_weight='balanced', n_jobs=1, C=2.0)
         clf.fit(X_train, y_train)
 
         auc = roc_auc_score(y_test, clf.predict_proba(X_test)[:, 1])
@@ -76,10 +76,8 @@ def main():
 
     df_enc, scaler, le_age = prepare_preprocessing(df)
 
-    feature_cols = [
-        'age_bucket_encoded', 'revenue', 'credit_score',
-        'has_101', 'has_102', 'has_103', 'has_104', 'has_105', 'has_106'
-    ]
+    # Feature-Spalten zusammenstellen – Ownership aller Produkte 101-110
+    feature_cols = ['age_bucket_encoded', 'revenue', 'credit_score'] + [f'has_{pid}' for pid in range(101, 111)]
 
     models, metrics, feature_map = train_models(df_enc, feature_cols)
 
