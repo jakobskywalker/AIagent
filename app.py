@@ -252,8 +252,8 @@ def main():
                         with col2:
                             st.metric("Score", f"{rec['score']:.2%}")
             
-            # Bundle-Angebot
-            if len(recommendations) >= 2:
+            # Bundle-Angebot (derzeit deaktiviert)
+            if False and len(recommendations) >= 2:
                 st.markdown("---")
                 st.markdown("### 💎 Bundle-Angebot")
                 
@@ -435,7 +435,10 @@ def main():
                 
                 # Kurzbeschreibung
                 st.markdown("### 📝 Beschreibung")
-                st.info(prod['short_desc'])
+                if 'long_desc' in prod and pd.notna(prod['long_desc']):
+                    st.info(prod['long_desc'])
+                else:
+                    st.info(prod['short_desc'])
                 
                 # Zusätzliche Infos basierend auf Kategorie
                 st.markdown("### 💡 Weitere Informationen")
